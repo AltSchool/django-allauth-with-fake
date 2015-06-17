@@ -130,8 +130,7 @@ class DraugiemTests(TestCase):
             draugiem_complete_login.return_value = login
 
             response = self.client.get(
-                reverse(views.callback),
-                {"dr_auth_status": "ok", "dr_auth_code": "42"},
+                reverse(views.callback), {"dr_auth_status": "ok", "dr_auth_code": "42"},
             )
             self.assertRedirects(
                 response, "/accounts/profile/", fetch_redirect_response=False

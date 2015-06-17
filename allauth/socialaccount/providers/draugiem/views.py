@@ -58,7 +58,6 @@ def callback(request):
         app = provider.app
         login = draugiem_complete_login(request, app, request.GET["dr_auth_code"])
         login.state = SocialLogin.unstash_state(request)
-
         ret = complete_social_login(request, login)
     except (requests.RequestException, DraugiemApiError) as e:
         auth_exception = e

@@ -1,4 +1,7 @@
 from django.conf import settings
+import json
+from django.core.exceptions import PermissionDenied
+from django.db import models
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.sites.shortcuts import get_current_site
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
@@ -15,7 +18,7 @@ from allauth.account.utils import (
 )
 from allauth.core import context
 from allauth.socialaccount import signals
-from allauth.socialaccount.internal import statekit
+from allauth.socialaccount.internal import statekit, build_absolute_uri
 
 from ..utils import get_request_param
 from . import app_settings, providers
@@ -387,6 +390,7 @@ class SocialLogin(object):
         next_url = get_next_redirect_url(request)
         if next_url:
             state["next"] = next_url
+        state["host"] = build_absolute_uri(request, "")
         state["process"] = get_request_param(request, "process", "login")
         state["scope"] = get_request_param(request, "scope", "")
         state["auth_params"] = get_request_param(request, "auth_params", "")

@@ -263,6 +263,7 @@ def build_absolute_uri(request, location, protocol=None):
     the case where request is None.
     """
     from .account import app_settings as account_settings
+    from django.contrib.sites.models import Site
 
     if request is None:
         if not app_settings.SITES_ENABLED:
