@@ -22,10 +22,7 @@ from allauth.socialaccount.helpers import (
 from allauth.socialaccount.internal import statekit
 from allauth.socialaccount.models import SocialLogin, SocialToken
 from allauth.socialaccount.providers.base import ProviderException
-from allauth.socialaccount.providers.base.constants import (
-    AuthAction,
-    AuthError
-)
+from allauth.socialaccount.providers.base.constants import AuthAction, AuthError
 from allauth.socialaccount.providers.base.views import BaseLoginView
 from allauth.socialaccount.providers.oauth2.client import (
     OAuth2Client,
@@ -121,11 +118,9 @@ class OAuth2View(object):
         if app_settings.LOGIN_CALLBACK_PROXY:
             callback_url = reverse(self.adapter.provider_id + "_callback")
             callback_url = urljoin(app_settings.LOGIN_CALLBACK_PROXY, callback_url)
-            callback_url = "%s/proxy/" % callback_url.rstrip("/")
+            callback_url = f"{callback_url.rstrip('/')}/proxy/"
         else:
             callback_url = self.adapter.get_callback_url(request, app)
-        provider = self.adapter.get_provider()
-        scope = provider.get_scope(request)
         client = self.adapter.client_class(
             self.request,
             app.client_id,
@@ -133,7 +128,6 @@ class OAuth2View(object):
             self.adapter.access_token_method,
             self.adapter.access_token_url,
             callback_url,
-            scope,
             scope_delimiter=self.adapter.scope_delimiter,
             headers=self.adapter.headers,
             basic_auth=self.adapter.basic_auth,
@@ -142,29 +136,32 @@ class OAuth2View(object):
 
 
 class OAuth2LoginView(OAuth2View, BaseLoginView):
+    def get_provider(self):
+        return self.adapter.get_provider()
+
     def dispatch(self, request, *args, **kwargs):
         provider = self.adapter.get_provider()
-        app = provider.get_app(self.request)
-        client = self.get_client(request, app)
+        client = self.get_client(request, provider.app)
         action = request.GET.get("action", AuthAction.AUTHENTICATE)
         auth_url = self.adapter.authorize_url
-        auth_params = provider.get_auth_params(request, action)
+        auth_params = provider.get_auth_params()
         client.state = SocialLogin.stash_state(request)
+        scope = provider.get_scope()
         try:
-            return HttpResponseRedirect(client.get_redirect_url(auth_url, auth_params))
+            return HttpResponseRedirect(client.get_redirect_url(auth_url, scope, auth_params))
         except OAuth2Error as e:
             return render_authentication_error(request, provider.id, exception=e)
 
     def login(self, request, *args, **kwargs):
         provider = self.adapter.get_provider()
-        app = provider.get_app(self.request)
-        client = self.get_client(request, app)
+        client = self.get_client(request, provider.app)
         action = request.GET.get("action", AuthAction.AUTHENTICATE)
         auth_url = self.adapter.authorize_url
-        auth_params = provider.get_auth_params(request, action)
+        auth_params = provider.get_auth_params()
         client.state = SocialLogin.stash_state(request)
+        scope = provider.get_scope()
         try:
-            return HttpResponseRedirect(client.get_redirect_url(auth_url, auth_params))
+            return HttpResponseRedirect(client.get_redirect_url(auth_url, scope, auth_params))
         except OAuth2Error as e:
             return render_authentication_error(request, provider.id, exception=e)
 

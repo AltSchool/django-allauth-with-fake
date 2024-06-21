@@ -18,9 +18,9 @@ from allauth.account.utils import (
 )
 from allauth.core import context
 from allauth.socialaccount import signals
-from allauth.socialaccount.internal import statekit, build_absolute_uri
+from allauth.socialaccount.internal import statekit
 
-from ..utils import get_request_param
+from ..utils import get_request_param, build_absolute_uri
 from . import app_settings, providers
 from .adapter import get_adapter
 

@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import
-from __future__ import unicode_literals
-
 import json, re, sys
 
 from allauth.account import app_settings
@@ -19,7 +16,7 @@ import importlib
 from allauth.socialaccount.models import SocialApp
 from allauth.socialaccount.providers.fake.views import FakeOAuth2Adapter
 
-from .views import (
+from allauth.socialaccount.providers.oauth2.views import (
     OAuth2LoginView,
     proxy_login_callback,
     MissingParameter,
