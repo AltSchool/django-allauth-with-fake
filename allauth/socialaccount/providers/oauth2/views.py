@@ -1,6 +1,8 @@
+import json
 from datetime import timedelta
 from requests import RequestException
 from typing import Dict, Optional
+from urllib.parse import urljoin, urlparse
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -11,21 +13,27 @@ from django.utils import timezone
 from allauth.account import app_settings as account_settings
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.core.internal.httpkit import add_query_params
+from django.http import HttpResponseRedirect
 from allauth.socialaccount.adapter import get_adapter
 from allauth.socialaccount.helpers import (
     complete_social_login,
     render_authentication_error,
 )
 from allauth.socialaccount.internal import statekit
-from allauth.socialaccount.models import SocialToken
+from allauth.socialaccount.models import SocialLogin, SocialToken
 from allauth.socialaccount.providers.base import ProviderException
-from allauth.socialaccount.providers.base.constants import AuthError
+from allauth.socialaccount.providers.base.constants import AuthAction, AuthError
 from allauth.socialaccount.providers.base.views import BaseLoginView
 from allauth.socialaccount.providers.oauth2.client import (
     OAuth2Client,
     OAuth2Error,
 )
+from allauth.account import app_settings
 from allauth.utils import build_absolute_uri, get_request_param
+
+
+class MissingParameter(Exception):
+    pass
 
 
 class OAuth2Adapter(object):
@@ -106,10 +114,56 @@ class OAuth2View(object):
 
         return view
 
+    def get_client(self, request, app):
+        if app_settings.LOGIN_CALLBACK_PROXY:
+            callback_url = reverse(self.adapter.provider_id + "_callback")
+            callback_url = urljoin(app_settings.LOGIN_CALLBACK_PROXY, callback_url)
+            callback_url = f"{callback_url.rstrip('/')}/proxy/"
+        else:
+            callback_url = self.adapter.get_callback_url(request, app)
+        client = self.adapter.client_class(
+            self.request,
+            app.client_id,
+            app.secret,
+            self.adapter.access_token_method,
+            self.adapter.access_token_url,
+            callback_url,
+            scope_delimiter=self.adapter.scope_delimiter,
+            headers=self.adapter.headers,
+            basic_auth=self.adapter.basic_auth,
+        )
+        return client
+
 
 class OAuth2LoginView(OAuth2View, BaseLoginView):
     def get_provider(self):
         return self.adapter.get_provider()
+
+    def dispatch(self, request, *args, **kwargs):
+        provider = self.adapter.get_provider()
+        client = self.get_client(request, provider.app)
+        action = request.GET.get("action", AuthAction.AUTHENTICATE)
+        auth_url = self.adapter.authorize_url
+        auth_params = provider.get_auth_params()
+        client.state = SocialLogin.stash_state(request)
+        scope = provider.get_scope()
+        try:
+            return HttpResponseRedirect(client.get_redirect_url(auth_url, scope, auth_params))
+        except OAuth2Error as e:
+            return render_authentication_error(request, provider.id, exception=e)
+
+    def login(self, request, *args, **kwargs):
+        provider = self.adapter.get_provider()
+        client = self.get_client(request, provider.app)
+        action = request.GET.get("action", AuthAction.AUTHENTICATE)
+        auth_url = self.adapter.authorize_url
+        auth_params = provider.get_auth_params()
+        client.state = SocialLogin.stash_state(request)
+        scope = provider.get_scope()
+        try:
+            return HttpResponseRedirect(client.get_redirect_url(auth_url, scope, auth_params))
+        except OAuth2Error as e:
+            return render_authentication_error(request, provider.id, exception=e)
 
 
 class OAuth2CallbackView(OAuth2View):
@@ -201,3 +255,44 @@ class OAuth2CallbackView(OAuth2View):
                 },
             )
         return state, None
+
+
+def target_in_whitelist(parsed_target):
+    target_loc = parsed_target.netloc
+    target_scheme = parsed_target.scheme
+    for allowed in app_settings.LOGIN_PROXY_REDIRECT_WHITELIST:
+        parsed_allowed = urlparse(allowed)
+        allowed_loc = parsed_allowed.netloc
+        allowed_scheme = parsed_allowed.scheme
+        if target_loc == allowed_loc and target_scheme == allowed_scheme:
+            return True
+    for allowed in app_settings.LOGIN_PROXY_REDIRECT_DOMAIN_WHITELIST:
+        if not allowed.startswith("http"):
+            allowed = f"https://{allowed}"  # scheme doesnt patter to us, but is required for urlparse
+        parsed_allowed = urlparse(allowed)
+        allowed_loc = parsed_allowed.netloc
+        if allowed_loc and target_loc.endswith(allowed_loc):
+            return True
+    return False
+
+
+def proxy_login_callback(request, **kwargs):
+    unverified_state = get_request_param(request, "state")
+    unverified_state = json.loads(unverified_state) if unverified_state else {}
+
+    if "host" not in unverified_state:
+        raise MissingParameter()
+
+    parsed_target = urlparse(unverified_state["host"])
+    if not target_in_whitelist(parsed_target):
+        raise PermissionDenied()
+
+    relative_callback = reverse(kwargs.get("callback_view_name"))
+    redirect = urljoin(unverified_state["host"], relative_callback)
+
+    # URLUnparse would be ideal here, but it's buggy.
+    # It used a semicolon instead of a question mark, which neither Django nor I
+    # understand. Neither of us have time for that nonsense, so add params
+    # manually.
+    redirect_with_params = "%s?%s" % (redirect, request.GET.urlencode())
+    return HttpResponseRedirect(redirect_with_params)

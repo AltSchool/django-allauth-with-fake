@@ -109,6 +109,7 @@ INSTALLED_APPS = (
     "allauth.socialaccount.providers.evernote",
     "allauth.socialaccount.providers.exist",
     "allauth.socialaccount.providers.facebook",
+    "allauth.socialaccount.providers.fake",
     "allauth.socialaccount.providers.feedly",
     "allauth.socialaccount.providers.figma",
     "allauth.socialaccount.providers.fivehundredpx",

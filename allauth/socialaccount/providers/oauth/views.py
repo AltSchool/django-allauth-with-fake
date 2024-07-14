@@ -56,7 +56,6 @@ class OAuthAdapter(object):
 
 
 class OAuthView(object):
-
     @classmethod
     def adapter_view(cls, adapter):
         def view(request, *args, **kwargs):
